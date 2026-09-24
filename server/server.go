@@ -47,8 +47,14 @@ func worker(conn net.Conn) {
 
 	reader := bufio.NewReader(conn)
 
-	res, err := parseRequest(reader)
+	req, err := parseRequest(reader)
 	if err != nil {
 		return
 	}
+
+	resp := NewResponse(req.Protocol).
+		SetStatus(200).
+		SetBody(req.Body)
+
+	resp.write(conn)
 }
