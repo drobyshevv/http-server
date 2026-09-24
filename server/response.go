@@ -25,24 +25,28 @@ func NewResponse(
 	}
 }
 
-func (r *Response) SetStatus(code int) *Response {
+type ResponseWriter interface {
+	SetStatus(int)
+	Status() int
+	SetHeader(string, string)
+	SetBody([]byte)
+}
+
+func (r *Response) SetStatus(code int) {
 	r.Code = code
-	return r
 }
 
 func (r *Response) Status() int {
 	return r.Code
 }
 
-func (r *Response) SetHeader(key string, val string) *Response {
+func (r *Response) SetHeader(key string, val string) {
 	r.Header[key] = val
-	return r
 }
 
-func (r *Response) SetBody(body []byte) *Response {
+func (r *Response) SetBody(body []byte) {
 	r.Body = body
 	r.Header["Content-Length"] = fmt.Sprintf("%d", len(body))
-	return r
 }
 
 func (r *Response) write(conn net.Conn) error {

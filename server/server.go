@@ -8,7 +8,8 @@ import (
 
 type Server struct {
 	listener net.Listener
-	Cfg      Config
+	router   *Router
+	cfg      Config
 }
 
 type Config struct {
@@ -16,14 +17,15 @@ type Config struct {
 	Port    int
 }
 
-func New(cfg Config) *Server {
+func NewServer(cfg Config, router *Router) *Server {
 	return &Server{
-		Cfg: cfg,
+		cfg:    cfg,
+		router: router,
 	}
 }
 
 func (s *Server) Run() error {
-	listener, err := net.Listen(s.Cfg.Network, fmt.Sprintf(":%d", s.Cfg.Port))
+	listener, err := net.Listen(s.cfg.Network, fmt.Sprintf(":%d", s.cfg.Port))
 	if err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
@@ -37,13 +39,19 @@ func (s *Server) Run() error {
 			continue
 		}
 
-		go worker(conn)
+		go s.worker(conn)
 	}
 
 }
 
-func worker(conn net.Conn) {
+func (s *Server) worker(conn net.Conn) {
 	defer conn.Close()
+
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("panic in worker: %v\n", r)
+		}
+	}()
 
 	reader := bufio.NewReader(conn)
 
@@ -52,9 +60,9 @@ func worker(conn net.Conn) {
 		return
 	}
 
-	resp := NewResponse(req.Protocol).
-		SetStatus(200).
-		SetBody(req.Body)
-
+	resp := NewResponse(req.Protocol)
+	if err := s.router.Route(req, resp); err != nil {
+		return
+	}
 	resp.write(conn)
 }
