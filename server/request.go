@@ -15,17 +15,20 @@ type Request struct {
 	Body          []byte
 }
 
+// parseStartLine разбирает стартовую строку HTTP-запроса.
+// Возвращает method, request-target и protocol.
 func parseStartLine(startLine string) (string, string, string, error) {
 	startLine = strings.TrimSpace(startLine)
 	parts := strings.SplitN(startLine, " ", 3)
 
-	if len(parts) < 3 {
-		return "", "", "", fmt.Errorf("invalid start line %s", startLine)
+	if len(parts) != 3 {
+		return "", "", "", fmt.Errorf("invalid start line: %s", startLine)
 	}
 
 	return parts[0], parts[1], parts[2], nil
 }
 
+// parseHeaders читает HTTP-заголовки до пустой строки.
 func parseHeaders(reader *bufio.Reader) (map[string]string, error) {
 	headers := make(map[string]string)
 	for {
@@ -34,11 +37,15 @@ func parseHeaders(reader *bufio.Reader) (map[string]string, error) {
 			return nil, err
 		}
 
+		// Пустая строка обозначает конец HTTP-заголовков.
 		if line == "\r\n" {
 			break
 		}
 
 		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid header")
+		}
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
 
@@ -48,11 +55,12 @@ func parseHeaders(reader *bufio.Reader) (map[string]string, error) {
 	return headers, nil
 }
 
+// parseBody читает из потока ровно contentLength байт тела HTTP-запроса.
 func parseBody(reader *bufio.Reader, contentLength int) ([]byte, error) {
 	body := make([]byte, contentLength)
 	remaining := contentLength
 	for remaining > 0 {
-		n, err := reader.Read(body)
+		n, err := reader.Read(body[contentLength-remaining:])
 		if err != nil {
 			return nil, err
 		}
@@ -62,10 +70,11 @@ func parseBody(reader *bufio.Reader, contentLength int) ([]byte, error) {
 	return body, nil
 }
 
+// parseRequest разбирает HTTP-запрос из потока.
 func parseRequest(reader *bufio.Reader) (*Request, error) {
 	startLine, err := reader.ReadString('\n')
 	if err != nil {
-		return nil, fmt.Errorf("failed to read start line %w", err)
+		return nil, fmt.Errorf("failed to read start line: %w", err)
 	}
 
 	method, reqTarget, protocol, err := parseStartLine(startLine)
@@ -75,9 +84,10 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 
 	headers, err := parseHeaders(reader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse headers %w", err)
+		return nil, fmt.Errorf("failed to parse headers: %w", err)
 	}
 
+	// Content-Length определяет длину тела, если оно передано.
 	val, bodyExists := headers["Content-Length"]
 
 	var body []byte = nil
