@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// Request представляет HTTP-запрос.
 type Request struct {
 	Method        string
 	RequestTarget string
