@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -47,8 +48,18 @@ func parseHeaders(reader *bufio.Reader) (map[string]string, error) {
 	return headers, nil
 }
 
-func parseBody() {
+func parseBody(reader *bufio.Reader, contentLength int) ([]byte, error) {
+	body := make([]byte, contentLength)
+	remaining := contentLength
+	for remaining > 0 {
+		n, err := reader.Read(body)
+		if err != nil {
+			return nil, err
+		}
 
+		remaining -= n
+	}
+	return body, nil
 }
 
 func parseRequest(reader *bufio.Reader) (*Request, error) {
@@ -67,5 +78,25 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 		return nil, fmt.Errorf("failed to parse headers %w", err)
 	}
 
-	return &Request{}, nil
+	val, bodyExists := headers["Content-Length"]
+
+	var body []byte = nil
+	if bodyExists {
+		contentLength, err := strconv.Atoi(val)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert Content-Length to integer: %w", err)
+		}
+		body, err = parseBody(reader, contentLength)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse request body: %w", err)
+		}
+	}
+
+	return &Request{
+		Method:        method,
+		RequestTarget: reqTarget,
+		Protocol:      protocol,
+		Headers:       headers,
+		Body:          body,
+	}, nil
 }
