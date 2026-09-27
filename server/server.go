@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"syscall"
 	"time"
@@ -64,7 +63,7 @@ func (s *Server) worker(conn net.Conn) {
 
 		req, err := parseRequest(reader)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if errors.Is(err, ErrConnectionClosed) {
 				fmt.Println("connection closed")
 				return
 			}

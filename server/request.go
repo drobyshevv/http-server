@@ -2,9 +2,15 @@ package server
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
+)
+
+var (
+	ErrConnectionClosed = errors.New("connection closed")
 )
 
 // Request представляет HTTP-запрос.
@@ -75,6 +81,10 @@ func parseBody(reader *bufio.Reader, contentLength int) ([]byte, error) {
 func parseRequest(reader *bufio.Reader) (*Request, error) {
 	startLine, err := reader.ReadString('\n')
 	if err != nil {
+		if errors.Is(err, io.EOF) && len(startLine) == 0 {
+			return nil, ErrConnectionClosed
+		}
+
 		return nil, fmt.Errorf("failed to read start line: %w", err)
 	}
 
