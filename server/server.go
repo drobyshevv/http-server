@@ -2,8 +2,12 @@ package server
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"net"
+	"syscall"
+	"time"
 )
 
 type Server struct {
@@ -55,14 +59,53 @@ func (s *Server) worker(conn net.Conn) {
 
 	reader := bufio.NewReader(conn)
 
-	req, err := parseRequest(reader)
-	if err != nil {
-		return
-	}
+	for {
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
-	resp := NewResponse(req.Protocol)
-	if err := s.router.Route(req, resp); err != nil {
-		return
+		req, err := parseRequest(reader)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				fmt.Println("connection closed")
+				return
+			}
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				fmt.Println("timeout:", err)
+				return
+			}
+			fmt.Println("request error:", err)
+			return
+		}
+
+		resp := NewResponse(req.Protocol)
+		if err := s.router.Route(req, resp); err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		err = resp.write(conn)
+		if err != nil {
+			if errors.Is(err, syscall.ECONNRESET) {
+				fmt.Println("connection reset by peer")
+				return
+			}
+			if errors.Is(err, syscall.EPIPE) {
+				fmt.Println("broken pipe")
+				return
+			}
+			var netErr *net.OpError
+			if errors.As(err, &netErr) {
+				fmt.Printf("net error%s: %v\n", netErr.Op, netErr.Err)
+				return
+			}
+			fmt.Println("request error")
+			return
+		}
+
+		if req.Headers["Connection"] == "close" {
+			fmt.Println(req.Headers["Connection"])
+			return
+		}
 	}
-	resp.write(conn)
 }
