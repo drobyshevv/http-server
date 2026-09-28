@@ -5,17 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 )
 
 type Server struct {
-	cfg      Config
-	listener net.Listener
-	router   *Router
-	wg       *sync.WaitGroup
+	cfg            Config
+	listener       net.Listener
+	router         *Router
+	wg             sync.WaitGroup
+	shutdownCtx    context.Context
+	cancelShutdown context.CancelFunc
 }
 
 type Config struct {
@@ -23,43 +23,39 @@ type Config struct {
 	Port    int
 }
 
-func NewServer(cfg Config, router *Router, wg *sync.WaitGroup) *Server {
+func NewServer(cfg Config, router *Router) *Server {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		cfg:    cfg,
-		router: router,
-		wg:     wg,
+		cfg:            cfg,
+		router:         router,
+		wg:             sync.WaitGroup{},
+		shutdownCtx:    ctx,
+		cancelShutdown: cancel,
 	}
 }
 
-func (s *Server) run() error {
+func (s *Server) Run() error {
 	listener, err := net.Listen(s.cfg.Network, fmt.Sprintf(":%d", s.cfg.Port))
 	if err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
 	s.listener = listener
 
-	sig, stopSig := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stopSig()
-
-	shutdownCtx, cancelShutdownCtx := context.WithCancel(context.Background())
-	defer cancelShutdownCtx()
-
-	go func() {
-		for {
-			conn, err := s.listener.Accept()
-			if err != nil {
-				if errors.Is(err, net.ErrClosed) {
-					break
-				}
-				continue
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				break
 			}
-			s.wg.Go(func() { s.serveConn(shutdownCtx, conn) })
+			continue
 		}
-	}()
+		s.wg.Go(func() { s.serveConn(s.shutdownCtx, conn) })
+	}
 
-	<-sig.Done()
-	stopSig()
+	return nil
+}
 
+func (s *Server) Shutdown() error {
 	if err := s.listener.Close(); err != nil {
 		return fmt.Errorf("failed to close listener: %w", err)
 	}
@@ -70,7 +66,7 @@ func (s *Server) run() error {
 		close(done)
 	}()
 
-	cancelShutdownCtx()
+	s.cancelShutdown()
 
 	select {
 	case <-done:
@@ -80,12 +76,3 @@ func (s *Server) run() error {
 	}
 	return nil
 }
-
-func (s *Server) MustRun() {
-	err := s.run()
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (s *Server) Shutdown() error
