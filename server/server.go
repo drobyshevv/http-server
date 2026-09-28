@@ -1,18 +1,21 @@
 package server
 
 import (
-	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"net"
+	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
 
 type Server struct {
+	cfg      Config
 	listener net.Listener
 	router   *Router
-	cfg      Config
+	wg       *sync.WaitGroup
 }
 
 type Config struct {
@@ -20,91 +23,69 @@ type Config struct {
 	Port    int
 }
 
-func NewServer(cfg Config, router *Router) *Server {
+func NewServer(cfg Config, router *Router, wg *sync.WaitGroup) *Server {
 	return &Server{
 		cfg:    cfg,
 		router: router,
+		wg:     wg,
 	}
 }
 
-func (s *Server) Run() error {
+func (s *Server) run() error {
 	listener, err := net.Listen(s.cfg.Network, fmt.Sprintf(":%d", s.cfg.Port))
 	if err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
-
-	defer listener.Close()
 	s.listener = listener
 
-	for {
-		conn, err := s.listener.Accept()
-		if err != nil {
-			continue
-		}
+	sig, stopSig := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSig()
 
-		go s.worker(conn)
-	}
+	shutdownCtx, cancelShutdownCtx := context.WithCancel(context.Background())
+	defer cancelShutdownCtx()
 
-}
-
-func (s *Server) worker(conn net.Conn) {
-	defer conn.Close()
-
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("panic in worker: %v\n", r)
+	go func() {
+		for {
+			conn, err := s.listener.Accept()
+			if err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					break
+				}
+				continue
+			}
+			s.wg.Go(func() { s.serveConn(shutdownCtx, conn) })
 		}
 	}()
 
-	reader := bufio.NewReader(conn)
+	<-sig.Done()
+	stopSig()
 
-	for {
-		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if err := s.listener.Close(); err != nil {
+		return fmt.Errorf("failed to close listener: %w", err)
+	}
 
-		req, err := parseRequest(reader)
-		if err != nil {
-			if errors.Is(err, ErrConnectionClosed) {
-				fmt.Println("connection closed")
-				return
-			}
-			var netErr net.Error
-			if errors.As(err, &netErr) && netErr.Timeout() {
-				fmt.Println("timeout:", err)
-				return
-			}
-			fmt.Println("request error:", err)
-			return
-		}
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
 
-		resp := NewResponse(req.Protocol)
-		if err := s.router.Route(req, resp); err != nil {
-			fmt.Println(err)
-			return
-		}
+	cancelShutdownCtx()
 
-		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		err = resp.write(conn)
-		if err != nil {
-			if errors.Is(err, syscall.ECONNRESET) {
-				fmt.Println("connection reset by peer")
-				return
-			}
-			if errors.Is(err, syscall.EPIPE) {
-				fmt.Println("broken pipe")
-				return
-			}
-			var netErr *net.OpError
-			if errors.As(err, &netErr) {
-				fmt.Printf("net error%s: %v\n", netErr.Op, netErr.Err)
-				return
-			}
-			fmt.Println("request error")
-			return
-		}
+	select {
+	case <-done:
+		fmt.Println("server stopped")
+	case <-time.After(time.Second * 5):
+		return fmt.Errorf("graceful shutdown timeout")
+	}
+	return nil
+}
 
-		if req.Headers["Connection"] == "close" {
-			fmt.Println(req.Headers["Connection"])
-			return
-		}
+func (s *Server) MustRun() {
+	err := s.run()
+	if err != nil {
+		panic(err)
 	}
 }
+
+func (s *Server) Shutdown() error
