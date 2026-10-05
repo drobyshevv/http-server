@@ -26,10 +26,14 @@ type Request struct {
 // Возвращает method, request-target и protocol.
 func parseStartLine(startLine string) (string, string, string, error) {
 	startLine = strings.TrimSpace(startLine)
-	parts := strings.SplitN(startLine, " ", 3)
+	parts := strings.Split(startLine, " ")
 
 	if len(parts) != 3 {
 		return "", "", "", fmt.Errorf("invalid start line: %s", startLine)
+	}
+
+	if parts[2] != "HTTP/1.1" {
+		return "", "", "", fmt.Errorf("invalid protocol: %s", startLine)
 	}
 
 	return parts[0], parts[1], parts[2], nil
