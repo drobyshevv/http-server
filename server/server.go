@@ -9,32 +9,32 @@ import (
 	"time"
 )
 
-// Server представляет HTTP-сервер и управляет его жизненным циклом,
-// TCP-соединениями и их корректным завершением.
+// Server represents the HTTP server and manages its lifecycle,
+// TCP connections, and graceful shutdown.
 type Server struct {
 	cfg      Config
 	listener net.Listener
 	router   *Router
-	// wg отслеживает все активные соединения сервера.
+	// wg tracks all active server connections.
 	wg sync.WaitGroup
-	// shutdownCtx используется для уведомления активных соединений
-	// о необходимости завершить работу.
+	// shutdownCtx is used to notify active connections
+	// that the server is shutting down.
 	shutdownCtx context.Context
-	// cancelShutdown отменяет shutdownCtx и запускает завершение
-	// всех активных соединений.
+	// cancelShutdown cancels shutdownCtx and signals active connections
+	// to shut down.
 	cancelShutdown context.CancelFunc
 }
 
-// Config содержит настройки TCP-сервера.
+// Config contains the TCP server configuration.
 type Config struct {
 	Network string
 	Port    int
 }
 
-// NewServer создаёт новый Server с указанными настройками и роутером.
+// NewServer creates a new Server with the specified configuration and router.
 func NewServer(cfg Config, router *Router) *Server {
-	// Создаём контекст жизненного цикла сервера.
-	// Он будет отменён при graceful shutdown.
+	// Create the server lifecycle context.
+	// It will be cancelled during graceful shutdown.
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
 		cfg:            cfg,
@@ -45,9 +45,9 @@ func NewServer(cfg Config, router *Router) *Server {
 	}
 }
 
-// Run запускает сервер и начинает принимать входящие TCP-соединения.
+// Run starts the server and begins accepting incoming TCP connections.
 //
-// Метод блокируется до тех пор, пока listener не будет закрыт.
+// The method blocks until the listener is closed.
 func (s *Server) Run() error {
 	listener, err := net.Listen(s.cfg.Network, fmt.Sprintf(":%d", s.cfg.Port))
 	if err != nil {
@@ -55,8 +55,8 @@ func (s *Server) Run() error {
 	}
 	s.listener = listener
 
-	// Ожидаем новые TCP-соединения.
-	// Цикл завершается после закрытия listener во время shutdown.
+	// Wait for new TCP connections.
+	// The loop terminates when the listener is closed during shutdown.
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
@@ -71,28 +71,28 @@ func (s *Server) Run() error {
 	return nil
 }
 
-// Shutdown выполняет graceful shutdown сервера.
+// Shutdown performs a graceful server shutdown.
 //
-// Сервер перестаёт принимать новые соединения и ожидает завершения
-// уже запущенных соединений. Если они не завершились за 5 секунд,
-// возвращается ошибка тайм-аута.
+// The server stops accepting new connections and waits for
+// already active connections to finish. If they do not finish
+// within 5 seconds, a timeout error is returned.
 func (s *Server) Shutdown() error {
-	// Закрываем listener, чтобы перестать принимать новые соединения.
-	// Это также разблокирует Accept() в Run().
+	// Close the listener to stop accepting new connections.
+	// This also unblocks Accept() in Run().
 	if err := s.listener.Close(); err != nil {
 		return fmt.Errorf("failed to close listener: %w", err)
 	}
 
-	// Ждём завершения всех активных соединений в отдельной горутине,
-	// чтобы можно было установить максимальное время ожидания.
+	// Wait for all active connections to finish in a separate goroutine
+	// so that a maximum wait time can be enforced.
 	done := make(chan struct{})
 	go func() {
 		s.wg.Wait()
 		close(done)
 	}()
 
-	// Отменяем контекст сервера и уведомляем активные соединения
-	// о необходимости завершиться.
+	// Cancel the server context and notify active connections
+	// that they should terminate.
 	s.cancelShutdown()
 
 	select {

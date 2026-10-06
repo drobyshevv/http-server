@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Response представляет HTTP-ответ.
+// Response represents an HTTP response.
 type Response struct {
 	Protocol string
 	Code     int
@@ -14,8 +14,8 @@ type Response struct {
 	Body     []byte
 }
 
-// NewResponse создаёт новый HTTP-ответ с указанным протоколом
-// и статусом 200 OK.
+// NewResponse creates a new HTTP response with the specified protocol
+// and a 200 OK status.
 func NewResponse(
 	protocol string,
 ) *Response {
@@ -28,7 +28,7 @@ func NewResponse(
 	}
 }
 
-// ResponseWriter определяет методы для формирования HTTP-ответа.
+// ResponseWriter defines methods for constructing an HTTP response.
 type ResponseWriter interface {
 	SetStatus(int)
 	Status() int
@@ -36,28 +36,28 @@ type ResponseWriter interface {
 	SetBody([]byte)
 }
 
-// SetStatus устанавливает код статуса HTTP-ответа.
+// SetStatus sets the HTTP response status code.
 func (r *Response) SetStatus(code int) {
 	r.Code = code
 }
 
-// Status возвращает код статуса HTTP-ответа.
+// Status returns the HTTP response status code.
 func (r *Response) Status() int {
 	return r.Code
 }
 
-// SetHeader устанавливает заголовок HTTP-ответа.
+// SetHeader sets an HTTP response header.
 func (r *Response) SetHeader(key string, val string) {
 	r.Header[key] = val
 }
 
-// SetBody устанавливает тело ответа и обновляет заголовок Content-Length.
+// SetBody sets the response body and updates the Content-Length header.
 func (r *Response) SetBody(body []byte) {
 	r.Body = body
 	r.Header["Content-Length"] = fmt.Sprintf("%d", len(body))
 }
 
-// write записывает HTTP-ответ в TCP-соединение.
+// write writes the HTTP response to a TCP connection.
 func (r *Response) write(conn net.Conn) error {
 	statusLine := fmt.Sprintf("%s %d %s\r\n", r.Protocol, r.Code, statusText(r.Code))
 

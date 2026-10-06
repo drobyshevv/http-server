@@ -10,23 +10,24 @@ import (
 	"time"
 )
 
-// serveConn обрабатывает одно TCP-соединение.
+// serveConn handles a single TCP connection.
 //
-// Метод последовательно принимает HTTP-запросы, передаёт их роутеру
-// и записывает HTTP-ответ в соединение. Соединение завершается при
-// закрытии клиентом, тайм-ауте, ошибке обработки или отмене контекста сервера.
+// The method sequentially receives HTTP requests, passes them to the router,
+// and writes HTTP responses to the connection. The connection is terminated
+// when the client closes it, a timeout occurs, an error is encountered,
+// or the server context is cancelled.
 func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 
-	// Закрываем соединение при отмене контекста сервера,
-	// чтобы прервать заблокированный Read.
+	// Close the connection when the server context is cancelled
+	// to interrupt a blocked Read.
 	stop := context.AfterFunc(ctx, func() {
 		conn.Close()
 	})
 	defer stop()
 
-	// Не позволяем панике в обработчике одного соединения
-	// завершить весь сервер.
+	// Prevent a panic in a single connection handler
+	// from terminating the entire server.
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("panic in worker: %v\n", r)
@@ -78,8 +79,8 @@ func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 			return
 		}
 
-		// При Connection: close клиент явно просит закрыть соединение
-		// после отправки текущего ответа.
+		// If the client explicitly sends Connection: close, close the connection
+		// after sending the current response.
 		if req.Headers["Connection"] == "close" {
 			fmt.Println(req.Headers["Connection"])
 			return
