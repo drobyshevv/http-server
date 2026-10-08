@@ -47,7 +47,7 @@ func TestServerRun(t *testing.T) {
 		runErr <- s.Run()
 	}()
 
-	<- s.Ready()
+	<-s.Ready()
 
 	defer s.listener.Close()
 

@@ -34,7 +34,7 @@ type Config struct {
 }
 
 func (s *Server) Ready() <-chan struct{} {
-    return s.ready
+	return s.ready
 }
 
 // NewServer creates a new Server with the specified configuration and router.
@@ -46,7 +46,7 @@ func NewServer(cfg Config, router *Router) *Server {
 		cfg:            cfg,
 		router:         router,
 		wg:             sync.WaitGroup{},
-		ready: make(chan struct{}),
+		ready:          make(chan struct{}),
 		shutdownCtx:    ctx,
 		cancelShutdown: cancel,
 	}
