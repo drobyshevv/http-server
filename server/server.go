@@ -20,6 +20,8 @@ type Server struct {
 	// shutdownCtx is used to notify active connections
 	// that the server is shutting down.
 	shutdownCtx context.Context
+	// ready is closed once the listener has been initialized.
+	ready chan struct{}
 	// cancelShutdown cancels shutdownCtx and signals active connections
 	// to shut down.
 	cancelShutdown context.CancelFunc
@@ -31,6 +33,10 @@ type Config struct {
 	Port    int
 }
 
+func (s *Server) Ready() <-chan struct{} {
+	return s.ready
+}
+
 // NewServer creates a new Server with the specified configuration and router.
 func NewServer(cfg Config, router *Router) *Server {
 	// Create the server lifecycle context.
@@ -40,6 +46,7 @@ func NewServer(cfg Config, router *Router) *Server {
 		cfg:            cfg,
 		router:         router,
 		wg:             sync.WaitGroup{},
+		ready:          make(chan struct{}),
 		shutdownCtx:    ctx,
 		cancelShutdown: cancel,
 	}
@@ -54,6 +61,7 @@ func (s *Server) Run() error {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
 	s.listener = listener
+	close(s.ready)
 
 	// Wait for new TCP connections.
 	// The loop terminates when the listener is closed during shutdown.

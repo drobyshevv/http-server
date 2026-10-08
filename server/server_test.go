@@ -47,9 +47,7 @@ func TestServerRun(t *testing.T) {
 		runErr <- s.Run()
 	}()
 
-	for s.listener == nil {
-		time.Sleep(time.Millisecond * 5)
-	}
+	<-s.Ready()
 
 	defer s.listener.Close()
 
