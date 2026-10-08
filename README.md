@@ -120,6 +120,12 @@ Run tests for the server package:
 go test ./server
 ```
 
+Run tests with the race detector:
+
+```bash
+go test -race ./...
+```
+
 You can also run static analysis with:
 
 ```bash
